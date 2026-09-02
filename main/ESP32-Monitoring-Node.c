@@ -1,5 +1,6 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/queue.h"
 
 #include "driver/gpio.h"
 #include "esp_log.h"
@@ -9,24 +10,41 @@
 
 static const char *TAG = "MONITOR";
 
-static TaskHandle_t button_task_handle = NULL;
+// Creation de event
+typedef enum
+{
+    BUTTON_PRESSED
+} event_t;
+
+// creation de Queue
+static QueueHandle_t event_queue;
+
+// Task with Queue
 static void button_task(void *arg)
 {
+    event_t event;
+
     while (1)
     {
-        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-
-        ESP_LOGI(TAG, "Button event received");
+        if (xQueueReceive(event_queue, &event, portMAX_DELAY))
+        {
+            if (event == BUTTON_PRESSED)
+            {
+                ESP_LOGI(TAG, "Button event received");
+            }
+        }
     }
 }
 
 // ISR
 static void IRAM_ATTR button_isr_handler(void *arg)
 {
+    event_t event = BUTTON_PRESSED;
     BaseType_t higher_priority_task_woken = pdFALSE;
 
-    vTaskNotifyGiveFromISR(
-        button_task_handle,
+    xQueueSendFromISR(
+        event_queue,
+        &event,
         &higher_priority_task_woken);
 
     portYIELD_FROM_ISR(higher_priority_task_woken);
@@ -49,6 +67,9 @@ void app_main(void)
 
     gpio_config(&button_config);
 
+    // Creation Queue
+    event_queue = xQueueCreate(10, sizeof(event_t));
+
     // Creation de la Task
     xTaskCreate(
         button_task,
@@ -56,7 +77,7 @@ void app_main(void)
         2048,
         NULL,
         5,
-        &button_task_handle);
+        NULL);
 
     // Install GPIO interrupt service
     gpio_install_isr_service(0);
