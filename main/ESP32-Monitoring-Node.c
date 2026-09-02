@@ -10,10 +10,15 @@
 
 static const char *TAG = "MONITOR";
 
+static TickType_t last_interrupt_time = 0;
+
 // Creation de event
 typedef enum
 {
-    BUTTON_PRESSED
+    BUTTON_PRESSED,
+    GPS_EVENT,
+    CAN_EVENT,
+    SENSOR_EVENT
 } event_t;
 
 // creation de Queue
@@ -30,6 +35,7 @@ static void button_task(void *arg)
         {
             if (event == BUTTON_PRESSED)
             {
+                gpio_set_level(LED_GPIO, !gpio_get_level(LED_GPIO));
                 ESP_LOGI(TAG, "Button event received");
             }
         }
@@ -39,15 +45,22 @@ static void button_task(void *arg)
 // ISR
 static void IRAM_ATTR button_isr_handler(void *arg)
 {
-    event_t event = BUTTON_PRESSED;
-    BaseType_t higher_priority_task_woken = pdFALSE;
+    TickType_t current_time = xTaskGetTickCountFromISR();
 
-    xQueueSendFromISR(
-        event_queue,
-        &event,
-        &higher_priority_task_woken);
+    if ((current_time - last_interrupt_time) > pdMS_TO_TICKS(200))
+    {
+        event_t event = BUTTON_PRESSED;
+        BaseType_t higher_priority_task_woken = pdFALSE;
 
-    portYIELD_FROM_ISR(higher_priority_task_woken);
+        xQueueSendFromISR(
+            event_queue,
+            &event,
+            &higher_priority_task_woken);
+
+        last_interrupt_time = current_time;
+
+        portYIELD_FROM_ISR(higher_priority_task_woken);
+    }
 }
 
 void app_main(void)
