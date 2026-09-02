@@ -9,9 +9,27 @@
 
 static const char *TAG = "MONITOR";
 
+static TaskHandle_t button_task_handle = NULL;
+static void button_task(void *arg)
+{
+    while (1)
+    {
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+
+        ESP_LOGI(TAG, "Button event received");
+    }
+}
+
+// ISR
 static void IRAM_ATTR button_isr_handler(void *arg)
 {
-    ESP_EARLY_LOGI(TAG, "Button interrupt");
+    BaseType_t higher_priority_task_woken = pdFALSE;
+
+    vTaskNotifyGiveFromISR(
+        button_task_handle,
+        &higher_priority_task_woken);
+
+    portYIELD_FROM_ISR(higher_priority_task_woken);
 }
 
 void app_main(void)
@@ -30,6 +48,15 @@ void app_main(void)
     };
 
     gpio_config(&button_config);
+
+    // Creation de la Task
+    xTaskCreate(
+        button_task,
+        "button_task",
+        2048,
+        NULL,
+        5,
+        &button_task_handle);
 
     // Install GPIO interrupt service
     gpio_install_isr_service(0);
