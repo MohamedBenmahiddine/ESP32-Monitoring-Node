@@ -34,10 +34,9 @@ typedef enum
 
 static system_state_t system_state = SYSTEM_IDLE;
 
-// creation de Queue
-static QueueHandle_t event_queue;
+static QueueHandle_t event_queue = NULL;
 
-// Task with Queue
+// Monitoring Task
 static void monitoring_task(void *arg)
 {
     monitoring_event_t event;
