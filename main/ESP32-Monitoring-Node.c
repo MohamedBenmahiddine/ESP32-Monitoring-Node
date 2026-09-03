@@ -20,23 +20,50 @@ typedef enum
     CAN_EVENT,
     SENSOR_EVENT
 } event_t;
+typedef struct
+{
+    event_t type;
+    int value;
+} monitoring_event_t;
+
+typedef enum
+{
+    SYSTEM_IDLE,
+    SYSTEM_ACTIVE
+} system_state_t;
+
+static system_state_t system_state = SYSTEM_IDLE;
 
 // creation de Queue
 static QueueHandle_t event_queue;
 
 // Task with Queue
-static void button_task(void *arg)
+static void monitoring_task(void *arg)
 {
-    event_t event;
+    monitoring_event_t event;
 
     while (1)
     {
         if (xQueueReceive(event_queue, &event, portMAX_DELAY))
         {
-            if (event == BUTTON_PRESSED)
+            if (event.type == BUTTON_PRESSED)
             {
-                gpio_set_level(LED_GPIO, !gpio_get_level(LED_GPIO));
-                ESP_LOGI(TAG, "Button event received");
+                system_state = !system_state;
+
+                if (system_state == SYSTEM_ACTIVE)
+                {
+                    ESP_LOGI(TAG, "System ACTIVE");
+                }
+                else
+                {
+                    ESP_LOGI(TAG, "System IDLE");
+                }
+
+                gpio_set_level(LED_GPIO, system_state);
+            }
+            else if (event.type == SENSOR_EVENT)
+            {
+                ESP_LOGI(TAG, "Temperature: %d C", event.value);
             }
         }
     }
@@ -49,7 +76,10 @@ static void IRAM_ATTR button_isr_handler(void *arg)
 
     if ((current_time - last_interrupt_time) > pdMS_TO_TICKS(200))
     {
-        event_t event = BUTTON_PRESSED;
+        monitoring_event_t event = {
+            .type = BUTTON_PRESSED,
+            .value = 0};
+
         BaseType_t higher_priority_task_woken = pdFALSE;
 
         xQueueSendFromISR(
@@ -60,6 +90,25 @@ static void IRAM_ATTR button_isr_handler(void *arg)
         last_interrupt_time = current_time;
 
         portYIELD_FROM_ISR(higher_priority_task_woken);
+    }
+}
+
+// sensor task
+static void sensor_task(void *arg)
+{
+    int sensor_value = 0;
+
+    while (1)
+    {
+        sensor_value = 20 + (sensor_value + 1) % 11;
+
+        monitoring_event_t event = {
+            .type = SENSOR_EVENT,
+            .value = sensor_value};
+
+        xQueueSend(event_queue, &event, portMAX_DELAY);
+
+        vTaskDelay(pdMS_TO_TICKS(5000));
     }
 }
 
@@ -81,12 +130,20 @@ void app_main(void)
     gpio_config(&button_config);
 
     // Creation Queue
-    event_queue = xQueueCreate(10, sizeof(event_t));
+    event_queue = xQueueCreate(10, sizeof(monitoring_event_t));
 
     // Creation de la Task
     xTaskCreate(
-        button_task,
-        "button_task",
+        monitoring_task,
+        "monitoring_task",
+        2048,
+        NULL,
+        5,
+        NULL);
+
+    xTaskCreate(
+        sensor_task,
+        "sensor_task",
         2048,
         NULL,
         5,
