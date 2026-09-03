@@ -65,6 +65,10 @@ static void monitoring_task(void *arg)
             {
                 ESP_LOGI(TAG, "Temperature: %d C", event.value);
             }
+            else if (event.type == GPS_EVENT)
+            {
+                ESP_LOGI(TAG, "GPS satellites: %d", event.value);
+            }
         }
     }
 }
@@ -112,6 +116,29 @@ static void sensor_task(void *arg)
     }
 }
 
+// GPS task
+static void gps_task(void *arg)
+{
+    int satellites = 8;
+    while (1)
+    {
+        monitoring_event_t event = {
+            .type = GPS_EVENT,
+            .value = satellites};
+
+        xQueueSend(event_queue, &event, portMAX_DELAY);
+
+        satellites--;
+
+        if (satellites < 4)
+        {
+            satellites = 8;
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(3000));
+    }
+}
+
 void app_main(void)
 {
     // LED
@@ -146,7 +173,15 @@ void app_main(void)
         "sensor_task",
         2048,
         NULL,
-        5,
+        4,
+        NULL);
+
+    xTaskCreate(
+        gps_task,
+        "gps_task",
+        2048,
+        NULL,
+        6,
         NULL);
 
     // Install GPIO interrupt service
