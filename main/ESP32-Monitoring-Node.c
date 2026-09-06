@@ -5,8 +5,12 @@
 #include "driver/gpio.h"
 #include "esp_log.h"
 
+#include "dht.h"
+
 #define LED_GPIO 2
 #define BUTTON_GPIO 0
+
+#define DHT_GPIO 4
 
 static const char *TAG = "MONITOR";
 
@@ -22,6 +26,8 @@ typedef enum
 typedef struct
 {
     event_t type;
+    float temperature;
+    float humidity;
     int value;
 } monitoring_event_t;
 
@@ -61,7 +67,9 @@ static void monitoring_task(void *arg)
             }
             else if (event.type == SENSOR_EVENT)
             {
-                ESP_LOGI(TAG, "Temperature: %d C", event.value);
+                ESP_LOGI(TAG, "Temperature: %.1f C, Humidity: %.1f %%",
+                         event.temperature,
+                         event.humidity);
             }
             else if (event.type == GPS_EVENT)
             {
@@ -98,17 +106,31 @@ static void IRAM_ATTR button_isr_handler(void *arg)
 // sensor task
 static void sensor_task(void *arg)
 {
-    int sensor_value = 0;
+    float humidity;
+    float temperature;
 
     while (1)
     {
-        sensor_value = 20 + (sensor_value + 1) % 11;
+        esp_err_t ret = dht_read_float_data(
+            DHT_TYPE_AM2301,
+            GPIO_NUM_4,
+            &humidity,
+            &temperature);
 
-        monitoring_event_t event = {
-            .type = SENSOR_EVENT,
-            .value = sensor_value};
+        if (ret == ESP_OK)
+        {
+            monitoring_event_t event = {
+                .type = SENSOR_EVENT,
+                .temperature = temperature,
+                .humidity = humidity,
+                .value = 0};
 
-        xQueueSend(event_queue, &event, portMAX_DELAY);
+            xQueueSend(event_queue, &event, portMAX_DELAY);
+        }
+        else
+        {
+            ESP_LOGE(TAG, "AM2302 read failed");
+        }
 
         vTaskDelay(pdMS_TO_TICKS(5000));
     }
@@ -157,6 +179,9 @@ void app_main(void)
 
     // Creation Queue
     event_queue = xQueueCreate(10, sizeof(monitoring_event_t));
+
+    float temperature = 0;
+    float humidity = 0;
 
     // Creation de la Task
     xTaskCreate(
