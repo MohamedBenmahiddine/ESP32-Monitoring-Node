@@ -1,7 +1,6 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
-#include "freertos/semphr.h"
 
 #include "driver/gpio.h"
 #include "esp_log.h"
@@ -13,14 +12,11 @@ static const char *TAG = "MONITOR";
 
 static TickType_t last_interrupt_time = 0;
 
-static int shared_value = 0;
-
 // Creation de event
 typedef enum
 {
     BUTTON_PRESSED,
     GPS_EVENT,
-    CAN_EVENT,
     SENSOR_EVENT
 } event_t;
 typedef struct
@@ -38,7 +34,6 @@ typedef enum
 static system_state_t system_state = SYSTEM_IDLE;
 
 static QueueHandle_t event_queue = NULL;
-static SemaphoreHandle_t resource_mutex = NULL;
 
 // Monitoring Task
 static void monitoring_task(void *arg)
@@ -109,15 +104,6 @@ static void sensor_task(void *arg)
     {
         sensor_value = 20 + (sensor_value + 1) % 11;
 
-        if (xSemaphoreTake(resource_mutex, portMAX_DELAY))
-        {
-            shared_value++;
-
-            ESP_LOGI(TAG, "Sensor: shared_value = %d", shared_value);
-
-            xSemaphoreGive(resource_mutex);
-        }
-
         monitoring_event_t event = {
             .type = SENSOR_EVENT,
             .value = sensor_value};
@@ -135,15 +121,6 @@ static void gps_task(void *arg)
 
     while (1)
     {
-        if (xSemaphoreTake(resource_mutex, portMAX_DELAY))
-        {
-            shared_value++;
-
-            ESP_LOGI(TAG, "GPS: shared_value = %d", shared_value);
-
-            xSemaphoreGive(resource_mutex);
-        }
-
         monitoring_event_t event = {
             .type = GPS_EVENT,
             .value = satellites};
@@ -180,14 +157,6 @@ void app_main(void)
 
     // Creation Queue
     event_queue = xQueueCreate(10, sizeof(monitoring_event_t));
-
-    resource_mutex = xSemaphoreCreateMutex();
-
-    if (resource_mutex == NULL)
-    {
-        ESP_LOGE(TAG, "Failed to create mutex");
-        return;
-    }
 
     // Creation de la Task
     xTaskCreate(
