@@ -21,7 +21,9 @@ typedef enum
 {
     BUTTON_PRESSED,
     GPS_EVENT,
-    SENSOR_EVENT
+    CAN_EVENT,
+    SENSOR_EVENT,
+    SENSOR_ERROR
 } event_t;
 typedef struct
 {
@@ -70,6 +72,10 @@ static void monitoring_task(void *arg)
                 ESP_LOGI(TAG, "Temperature: %.1f C, Humidity: %.1f %%",
                          event.temperature,
                          event.humidity);
+            }
+            else if (event.type == SENSOR_ERROR)
+            {
+                ESP_LOGE(TAG, "AM2302 read failed, error code: %d", event.value);
             }
             else if (event.type == GPS_EVENT)
             {
@@ -129,7 +135,11 @@ static void sensor_task(void *arg)
         }
         else
         {
-            ESP_LOGE(TAG, "AM2302 read failed");
+            monitoring_event_t event = {
+                .type = SENSOR_ERROR,
+                .value = ret};
+
+            xQueueSend(event_queue, &event, portMAX_DELAY);
         }
 
         vTaskDelay(pdMS_TO_TICKS(5000));
@@ -179,9 +189,6 @@ void app_main(void)
 
     // Creation Queue
     event_queue = xQueueCreate(10, sizeof(monitoring_event_t));
-
-    float temperature = 0;
-    float humidity = 0;
 
     // Creation de la Task
     xTaskCreate(
