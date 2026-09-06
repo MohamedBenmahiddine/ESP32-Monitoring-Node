@@ -109,12 +109,6 @@ static void sensor_task(void *arg)
     {
         sensor_value = 20 + (sensor_value + 1) % 11;
 
-        monitoring_event_t event = {
-            .type = SENSOR_EVENT,
-            .value = sensor_value};
-
-        xQueueSend(event_queue, &event, portMAX_DELAY);
-
         if (xSemaphoreTake(resource_mutex, portMAX_DELAY))
         {
             shared_value++;
@@ -124,6 +118,12 @@ static void sensor_task(void *arg)
             xSemaphoreGive(resource_mutex);
         }
 
+        monitoring_event_t event = {
+            .type = SENSOR_EVENT,
+            .value = sensor_value};
+
+        xQueueSend(event_queue, &event, portMAX_DELAY);
+
         vTaskDelay(pdMS_TO_TICKS(5000));
     }
 }
@@ -132,8 +132,18 @@ static void sensor_task(void *arg)
 static void gps_task(void *arg)
 {
     int satellites = 8;
+
     while (1)
     {
+        if (xSemaphoreTake(resource_mutex, portMAX_DELAY))
+        {
+            shared_value++;
+
+            ESP_LOGI(TAG, "GPS: shared_value = %d", shared_value);
+
+            xSemaphoreGive(resource_mutex);
+        }
+
         monitoring_event_t event = {
             .type = GPS_EVENT,
             .value = satellites};
@@ -146,14 +156,7 @@ static void gps_task(void *arg)
         {
             satellites = 8;
         }
-        if (xSemaphoreTake(resource_mutex, portMAX_DELAY))
-        {
-            shared_value++;
 
-            ESP_LOGI(TAG, "GPS: shared_value = %d", shared_value);
-
-            xSemaphoreGive(resource_mutex);
-        }
         vTaskDelay(pdMS_TO_TICKS(3000));
     }
 }
