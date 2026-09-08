@@ -21,7 +21,6 @@ typedef enum
 {
     BUTTON_PRESSED,
     GPS_EVENT,
-    CAN_EVENT,
     SENSOR_EVENT,
     SENSOR_ERROR
 } event_t;
@@ -54,7 +53,14 @@ static void monitoring_task(void *arg)
         {
             if (event.type == BUTTON_PRESSED)
             {
-                system_state = !system_state;
+                if (system_state == SYSTEM_IDLE)
+                {
+                    system_state = SYSTEM_ACTIVE;
+                }
+                else
+                {
+                    system_state = SYSTEM_IDLE;
+                }
 
                 if (system_state == SYSTEM_ACTIVE)
                 {
@@ -119,7 +125,7 @@ static void sensor_task(void *arg)
     {
         esp_err_t ret = dht_read_float_data(
             DHT_TYPE_AM2301,
-            GPIO_NUM_4,
+            DHT_GPIO,
             &humidity,
             &temperature);
 
